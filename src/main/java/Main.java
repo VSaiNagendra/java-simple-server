@@ -17,8 +17,15 @@ public class Main {
 
       String requestLine = in.readLine();
       String urlPath = requestLine.split(" ")[1];
-      if (urlPath.equals("/")) {
-        out.write("HTTP/1.1 200 OK\r\n\r\n".getBytes());
+      if (urlPath.startsWith("/echo")) {
+        String path = urlPath.split("/")[2];
+        String response = "HTTP/1.1 200 OK"
+                + "\r\n"
+                + "Content-Type: text/plain\r\n"
+                + "Content-Length: " + path.length() + "\r\n"
+                + "\r\n"
+                + path;
+        out.write(response.getBytes());
       } else {
         out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
       }
