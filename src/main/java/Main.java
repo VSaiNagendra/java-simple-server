@@ -1,12 +1,18 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Files;
 
 public class Main {
+  static String basePath;
   public static void main(String[] args) {
+    basePath = null;
+    for (int i = 0; i < args.length - 1; i++) {
+      if (args[i].equals("--directory")) {
+        basePath = args[i + 1];
+        break;
+      }
+    }
     ServerSocket serverSocket = null;
     try {
       serverSocket = new ServerSocket(4221);
@@ -67,6 +73,23 @@ class RequestHandler implements Runnable {
         }
       } else if (urlPath.equals("/")) {
         out.write("HTTP/1.1 200 OK\r\n\r\n".getBytes());
+      } else if (urlPath.startsWith("/files/")) {
+        String fileName = urlPath.substring("/files/".length());
+        File file = new File(Main.basePath, fileName);
+
+        if (!file.exists() || file.isDirectory()) {
+          out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
+        } else {
+          byte[] fileContent = Files.readAllBytes(file.toPath());
+
+          String responseHeaders = "HTTP/1.1 200 OK\r\n" +
+                  "Content-Type: application/octet-stream\r\n" +
+                  "Content-Length: " + fileContent.length + "\r\n" +
+                  "\r\n";
+
+          out.write(responseHeaders.getBytes());
+          out.write(fileContent);
+        }
       } else {
         out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
       }
