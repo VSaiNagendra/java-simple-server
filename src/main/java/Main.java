@@ -26,7 +26,7 @@ public class Main {
                 + "\r\n"
                 + path;
         out.write(response.getBytes());
-      } else if (urlPath.startsWith("/")) {
+      } else if (urlPath.equals("/")) {
         out.write("HTTP/1.1 200 OK\r\n\r\n".getBytes());
       } else {
         out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
