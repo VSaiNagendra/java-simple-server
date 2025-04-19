@@ -26,6 +26,21 @@ public class Main {
                 + "\r\n"
                 + path;
         out.write(response.getBytes());
+      } else if (urlPath.equals("/user-agent")) {
+        String line;
+        while ((line = in.readLine()) != null && !line.isEmpty()) {
+          if (line.startsWith("User-Agent:")) {
+            String userAgentHeaderValue = line.split(":", 2)[1].trim();
+            String response = "HTTP/1.1 200 OK"
+                    + "\r\n"
+                    + "Content-Type: text/plain\r\n"
+                    + "Content-Length: " + userAgentHeaderValue.length() + "\r\n"
+                    + "\r\n"
+                    + userAgentHeaderValue;
+            out.write(response.getBytes());
+            break;
+          }
+        }
       } else if (urlPath.equals("/")) {
         out.write("HTTP/1.1 200 OK\r\n\r\n".getBytes());
       } else {
