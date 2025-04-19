@@ -8,9 +8,10 @@ public class Main {
     try {
       ServerSocket serverSocket = new ServerSocket(4221);
       serverSocket.setReuseAddress(true);
-      serverSocket.accept();
-      serverSocket.getOutputStream().write("HTTP/1.1 200 OK\r\n\r\n".getBytes());
+      Socket socket = serverSocket.accept();
+      socket.getOutputStream().write("HTTP/1.1 200 OK\r\n\r\n".getBytes());
       System.out.println("accepted new connection");
+      socket.close();
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
     }
