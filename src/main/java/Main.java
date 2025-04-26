@@ -54,6 +54,7 @@ class RequestHandler implements Runnable {
   private static final String HTTP_OK = "HTTP/1.1 200 OK";
   private static final String HTTP_CREATED = "HTTP/1.1 201 Created";
   private static final String HTTP_NOT_FOUND = "HTTP/1.1 404 Not Found";
+  private static final String HTTP_METHOD_NOT_ALLOWED = "HTTP/1.1 405 Method Not Allowed";
   private static final String CRLF = "\r\n";
 
   private final Socket socket;
@@ -68,50 +69,86 @@ class RequestHandler implements Runnable {
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             OutputStream out = socket.getOutputStream()
     ) {
-      String requestLine = in.readLine();
-      String[] requestLineContents = requestLine.split(" ");
-      String method = requestLineContents[0];
-      String urlPath = requestLineContents[1];
+      boolean keepConnectionAlive = true;
 
-      if (Objects.equals(method, "POST")) {
-        handlePostRequest(in, out, urlPath);
-      } else {
-        handleGetRequest(in, out, urlPath);
+      while (keepConnectionAlive) {
+        String requestLine = in.readLine();
+
+        if (requestLine == null || requestLine.isEmpty()) {
+          break;
+        }
+
+        String[] requestLineContents = requestLine.split(" ");
+        if (requestLineContents.length < 2) {
+          sendResponse(out, HTTP_METHOD_NOT_ALLOWED + CRLF + CRLF);
+          break;
+        }
+
+        String method = requestLineContents[0];
+        String urlPath = requestLineContents[1];
+
+        // Parse headers
+        String userAgent = "";
+        int contentLength = 0;
+        boolean connectionClose = false;
+
+        String line;
+        while ((line = in.readLine()) != null && !line.isEmpty()) {
+          String lowerLine = line.toLowerCase();
+          if (lowerLine.startsWith("content-length:")) {
+            contentLength = Integer.parseInt(line.split(":", 2)[1].trim());
+          } else if (lowerLine.startsWith("user-agent:")) {
+            userAgent = line.split(":", 2)[1].trim();
+          } else if (lowerLine.startsWith("connection:")) {
+            if (lowerLine.contains("close")) {
+              connectionClose = true;
+            }
+          }
+        }
+
+        if (Objects.equals(method, "POST")) {
+          handlePostRequest(in, out, urlPath, contentLength);
+        } else if (Objects.equals(method, "GET")) {
+          handleGetRequest(out, urlPath, userAgent);
+        } else {
+          sendResponse(out, HTTP_METHOD_NOT_ALLOWED + CRLF + CRLF);
+        }
+
+        out.flush();
+
+        if (connectionClose) {
+          keepConnectionAlive = false;
+        }
       }
-
-      out.flush();
-      socket.close();
     } catch (IOException e) {
       System.out.println("IOException while handling connection: " + e.getMessage());
+    } finally {
+      try {
+        socket.close();
+      } catch (IOException ignored) {
+      }
     }
   }
 
-  private void handlePostRequest(BufferedReader in, OutputStream out, String urlPath) throws IOException {
-    if (urlPath.startsWith("/files")) {
-      String fileName = urlPath.replace("/files/", "");
-      int contentLength = getContentLength(in);
+  private void handlePostRequest(BufferedReader in, OutputStream out, String urlPath, int contentLength) throws IOException {
+    if (urlPath.startsWith("/files/")) {
+      String fileName = urlPath.substring("/files/".length());
       String requestBody = readRequestBody(in, contentLength);
 
       writeToFile(fileName, requestBody);
-      out.write((HTTP_CREATED + CRLF + CRLF).getBytes());
+      sendResponse(out, HTTP_CREATED + CRLF + CRLF);
+    } else {
+      sendResponse(out, HTTP_NOT_FOUND + CRLF + CRLF);
     }
-  }
-
-  private int getContentLength(BufferedReader in) throws IOException {
-    String line;
-    int contentLength = 0;
-    while ((line = in.readLine()) != null && !line.isEmpty()) {
-      if (line.startsWith("Content-Length:")) {
-        contentLength = Integer.parseInt(line.split(":")[1].trim());
-      }
-    }
-    return contentLength;
   }
 
   private String readRequestBody(BufferedReader in, int contentLength) throws IOException {
     char[] body = new char[contentLength];
     int read = in.read(body, 0, contentLength);
-    return new String(body, 0, read);
+    if (read != contentLength) {
+      throw new IOException("Failed to read complete request body");
+    }
+    return new String(body);
   }
 
   private void writeToFile(String fileName, String content) {
@@ -123,43 +160,28 @@ class RequestHandler implements Runnable {
     }
   }
 
-  private void handleGetRequest(BufferedReader in, OutputStream out, String urlPath) throws IOException {
-    if (urlPath.startsWith("/echo")) {
-      handleEchoRequest(out, urlPath);
+  private void handleGetRequest(OutputStream out, String urlPath, String userAgent) throws IOException {
+    if (urlPath.startsWith("/echo/")) {
+      String message = urlPath.substring("/echo/".length());
+      String response = HTTP_OK + CRLF +
+              "Content-Type: text/plain" + CRLF +
+              "Content-Length: " + message.length() + CRLF +
+              CRLF +
+              message;
+      sendResponse(out, response);
     } else if (urlPath.equals("/user-agent")) {
-      handleUserAgentRequest(in, out);
+      String response = HTTP_OK + CRLF +
+              "Content-Type: text/plain" + CRLF +
+              "Content-Length: " + userAgent.length() + CRLF +
+              CRLF +
+              userAgent;
+      sendResponse(out, response);
     } else if (urlPath.equals("/")) {
       sendResponse(out, HTTP_OK + CRLF + CRLF);
     } else if (urlPath.startsWith("/files/")) {
       handleFileRequest(out, urlPath);
     } else {
       sendResponse(out, HTTP_NOT_FOUND + CRLF + CRLF);
-    }
-  }
-
-  private void handleEchoRequest(OutputStream out, String urlPath) throws IOException {
-    String path = urlPath.split("/")[2];
-    String response = HTTP_OK + CRLF +
-            "Content-Type: text/plain" + CRLF +
-            "Content-Length: " + path.length() + CRLF +
-            CRLF +
-            path;
-    sendResponse(out, response);
-  }
-
-  private void handleUserAgentRequest(BufferedReader in, OutputStream out) throws IOException {
-    String line;
-    while ((line = in.readLine()) != null && !line.isEmpty()) {
-      if (line.startsWith("User-Agent:")) {
-        String userAgentValue = line.split(":", 2)[1].trim();
-        String response = HTTP_OK + CRLF +
-                "Content-Type: text/plain" + CRLF +
-                "Content-Length: " + userAgentValue.length() + CRLF +
-                CRLF +
-                userAgentValue;
-        sendResponse(out, response);
-        break;
-      }
     }
   }
 
