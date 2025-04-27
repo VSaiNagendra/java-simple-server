@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPOutputStream;
 
 public class Main {
   static String basePath;
@@ -111,10 +112,10 @@ class RequestHandler implements Runnable {
             if (lowerLine.contains("close")) {
               connectionClose = true;
             }
-          } else if (lowerLine.startsWith("accept-encoding")) {
+          } else if (lowerLine.startsWith("accept-encoding:")) {
             acceptEncoding = Arrays.stream(line.split(":", 2)[1].split(","))
-                .map(String::trim)
-                .collect(Collectors.toSet());
+                    .map(String::trim)
+                    .collect(Collectors.toSet());
           }
         }
 
@@ -182,8 +183,11 @@ class RequestHandler implements Runnable {
     if (connectionClose) {
       responseHeaders += "Connection: close" + CRLF;
     }
-    for (String encoding: Main.supportedEncodings) {
-      if (acceptEncoding.contains(encoding)) {
+
+    String encoding = null;
+    for (String enc : Main.supportedEncodings) {
+      if (acceptEncoding.contains(enc)) {
+        encoding = enc;
         responseHeaders += "Content-Encoding: " + encoding + CRLF;
         break;
       }
@@ -191,12 +195,23 @@ class RequestHandler implements Runnable {
 
     if (urlPath.startsWith("/echo/")) {
       String message = urlPath.substring("/echo/".length());
-      String response = responseHeaders +
-              "Content-Type: text/plain" + CRLF +
-              "Content-Length: " + message.length() + CRLF +
-              CRLF +
-              message;
-      sendResponse(out, response);
+      responseHeaders += "Content-Type: text/plain" + CRLF;
+
+      if ("gzip".equals(encoding)) {
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(byteArrayOutputStream)) {
+          gzipOutputStream.write(message.getBytes());
+        }
+        byte[] compressedData = byteArrayOutputStream.toByteArray();
+
+        responseHeaders += "Content-Length: " + compressedData.length + CRLF + CRLF;
+        out.write(responseHeaders.getBytes());
+        out.write(compressedData);
+      } else {
+        // Send uncompressed response
+        responseHeaders += "Content-Length: " + message.length() + CRLF + CRLF + message;
+        sendResponse(out, responseHeaders);
+      }
     } else if (urlPath.equals("/user-agent")) {
       String response = responseHeaders +
               "Content-Type: text/plain" + CRLF +
