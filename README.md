@@ -1,4 +1,9 @@
+
 [![progress-banner](https://backend.codecrafters.io/progress/http-server/db54dfae-afb7-4319-b443-98f9e33e67e7)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+
+### Instructions to run
+- docker build -t http-server:1.1 .
+- docker run -p 4221:4221 --rm http-server:1.1
 
 This is a starting point for Java solutions to the
 ["Build Your Own HTTP server" Challenge](https://app.codecrafters.io/courses/http-server/overview).

@@ -107,9 +107,9 @@ class RequestHandler implements Runnable {
         }
 
         if (Objects.equals(method, "POST")) {
-          handlePostRequest(in, out, urlPath, contentLength);
+          handlePostRequest(in, out, urlPath, contentLength, connectionClose);
         } else if (Objects.equals(method, "GET")) {
-          handleGetRequest(out, urlPath, userAgent);
+          handleGetRequest(out, urlPath, userAgent, connectionClose);
         } else {
           sendResponse(out, HTTP_METHOD_NOT_ALLOWED + CRLF + CRLF);
         }
@@ -130,13 +130,18 @@ class RequestHandler implements Runnable {
     }
   }
 
-  private void handlePostRequest(BufferedReader in, OutputStream out, String urlPath, int contentLength) throws IOException {
+  private void handlePostRequest(BufferedReader in, OutputStream out, String urlPath, int contentLength, boolean connectionClose) throws IOException {
     if (urlPath.startsWith("/files/")) {
       String fileName = urlPath.substring("/files/".length());
       String requestBody = readRequestBody(in, contentLength);
 
       writeToFile(fileName, requestBody);
-      sendResponse(out, HTTP_CREATED + CRLF + CRLF);
+      String response = HTTP_CREATED + CRLF;
+      if (connectionClose) {
+        response += "Connection: close" + CRLF;
+      }
+      response += CRLF;
+      sendResponse(out, response);
     } else {
       sendResponse(out, HTTP_NOT_FOUND + CRLF + CRLF);
     }
@@ -160,32 +165,38 @@ class RequestHandler implements Runnable {
     }
   }
 
-  private void handleGetRequest(OutputStream out, String urlPath, String userAgent) throws IOException {
+  private void handleGetRequest(OutputStream out, String urlPath, String userAgent, boolean connectionClose) throws IOException {
+    String responseHeaders = HTTP_OK + CRLF;
+    if (connectionClose) {
+      responseHeaders += "Connection: close" + CRLF;
+    }
+
     if (urlPath.startsWith("/echo/")) {
       String message = urlPath.substring("/echo/".length());
-      String response = HTTP_OK + CRLF +
+      String response = responseHeaders +
               "Content-Type: text/plain" + CRLF +
               "Content-Length: " + message.length() + CRLF +
               CRLF +
               message;
       sendResponse(out, response);
     } else if (urlPath.equals("/user-agent")) {
-      String response = HTTP_OK + CRLF +
+      String response = responseHeaders +
               "Content-Type: text/plain" + CRLF +
               "Content-Length: " + userAgent.length() + CRLF +
               CRLF +
               userAgent;
       sendResponse(out, response);
     } else if (urlPath.equals("/")) {
-      sendResponse(out, HTTP_OK + CRLF + CRLF);
+      String response = responseHeaders + CRLF;
+      sendResponse(out, response);
     } else if (urlPath.startsWith("/files/")) {
-      handleFileRequest(out, urlPath);
+      handleFileRequest(out, urlPath, responseHeaders);
     } else {
       sendResponse(out, HTTP_NOT_FOUND + CRLF + CRLF);
     }
   }
 
-  private void handleFileRequest(OutputStream out, String urlPath) throws IOException {
+  private void handleFileRequest(OutputStream out, String urlPath, String initialHeaders) throws IOException {
     String fileName = urlPath.substring("/files/".length());
     File file = new File(Main.basePath, fileName);
 
@@ -193,7 +204,7 @@ class RequestHandler implements Runnable {
       sendResponse(out, HTTP_NOT_FOUND + CRLF + CRLF);
     } else {
       byte[] fileContent = Files.readAllBytes(file.toPath());
-      String responseHeaders = HTTP_OK + CRLF +
+      String responseHeaders = initialHeaders +
               "Content-Type: application/octet-stream" + CRLF +
               "Content-Length: " + fileContent.length + CRLF +
               CRLF;
