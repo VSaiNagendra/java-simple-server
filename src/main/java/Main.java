@@ -3,10 +3,15 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
 public class Main {
   static String basePath;
+  static Set<String> supportedEncodings = new HashSet<String>() {{
+    add("gzip");
+  }};
 
   public static void main(String[] args) {
     parseBasePath(args);
@@ -91,6 +96,7 @@ class RequestHandler implements Runnable {
         String userAgent = "";
         int contentLength = 0;
         boolean connectionClose = false;
+        String acceptEncoding = "";
 
         String line;
         while ((line = in.readLine()) != null && !line.isEmpty()) {
@@ -103,13 +109,15 @@ class RequestHandler implements Runnable {
             if (lowerLine.contains("close")) {
               connectionClose = true;
             }
+          } else if (lowerLine.startsWith("accept-encoding")) {
+            acceptEncoding = line.split(":", 2)[1].trim();
           }
         }
 
         if (Objects.equals(method, "POST")) {
           handlePostRequest(in, out, urlPath, contentLength, connectionClose);
         } else if (Objects.equals(method, "GET")) {
-          handleGetRequest(out, urlPath, userAgent, connectionClose);
+          handleGetRequest(out, urlPath, userAgent, connectionClose, acceptEncoding);
         } else {
           sendResponse(out, HTTP_METHOD_NOT_ALLOWED + CRLF + CRLF);
         }
@@ -165,10 +173,12 @@ class RequestHandler implements Runnable {
     }
   }
 
-  private void handleGetRequest(OutputStream out, String urlPath, String userAgent, boolean connectionClose) throws IOException {
+  private void handleGetRequest(OutputStream out, String urlPath, String userAgent, boolean connectionClose, String acceptEncoding) throws IOException {
     String responseHeaders = HTTP_OK + CRLF;
     if (connectionClose) {
       responseHeaders += "Connection: close" + CRLF;
+    } else if (Main.supportedEncodings.contains(acceptEncoding)) {
+      responseHeaders += "Content-Encoding: " + acceptEncoding + CRLF;
     }
 
     if (urlPath.startsWith("/echo/")) {
