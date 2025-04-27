@@ -3,9 +3,11 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class Main {
   static String basePath;
@@ -96,7 +98,7 @@ class RequestHandler implements Runnable {
         String userAgent = "";
         int contentLength = 0;
         boolean connectionClose = false;
-        String acceptEncoding = "";
+        Set<String> acceptEncoding = new HashSet<>();
 
         String line;
         while ((line = in.readLine()) != null && !line.isEmpty()) {
@@ -110,7 +112,9 @@ class RequestHandler implements Runnable {
               connectionClose = true;
             }
           } else if (lowerLine.startsWith("accept-encoding")) {
-            acceptEncoding = line.split(":", 2)[1].trim();
+            acceptEncoding = Arrays.stream(line.split(":", 2)[1].split(","))
+                .map(String::trim)
+                .collect(Collectors.toSet());
           }
         }
 
@@ -173,12 +177,16 @@ class RequestHandler implements Runnable {
     }
   }
 
-  private void handleGetRequest(OutputStream out, String urlPath, String userAgent, boolean connectionClose, String acceptEncoding) throws IOException {
+  private void handleGetRequest(OutputStream out, String urlPath, String userAgent, boolean connectionClose, Set<String> acceptEncoding) throws IOException {
     String responseHeaders = HTTP_OK + CRLF;
     if (connectionClose) {
       responseHeaders += "Connection: close" + CRLF;
-    } else if (Main.supportedEncodings.contains(acceptEncoding)) {
-      responseHeaders += "Content-Encoding: " + acceptEncoding + CRLF;
+    }
+    for (String encoding: Main.supportedEncodings) {
+      if (acceptEncoding.contains(encoding)) {
+        responseHeaders += "Content-Encoding: " + encoding + CRLF;
+        break;
+      }
     }
 
     if (urlPath.startsWith("/echo/")) {
